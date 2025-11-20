@@ -5,7 +5,7 @@
  * card game that separates number cards and action cards into distinct decks.
  * 
  * Author: Muktadir Somio
- * Version: 2.0 (Improved)
+ * Version: 3.0 (Refactored for N Players)
  * Language: C++17
  * 
  * Description:
@@ -27,28 +27,44 @@
 #include <algorithm>
 #include <iomanip>
 #include <limits>
+#include <map>
 
 using namespace std;
 
 /*******************************************************************************
- * ENUMERATIONS
+ * ENUMERATIONS & STRUCTS
  ******************************************************************************/
 
 // Card types in Split UNO
-enum class CardType {
-    NUMBER,
+enum class ActionType {
     BLOCK,
+    SKIP,
     REVERSE,
     COLOR_CHANGE,
+    WILD,
     DRAW_TWO,
     DRAW_FOUR,
     TRUTH,
-    DARE
+    DARE,
+    UNKNOWN
 };
 
 // Card colors
 enum class Color {
     RED, YELLOW, GREEN, BLUE, WILD
+};
+
+// Player Structure
+struct Player {
+    string name;
+    int numberCards;
+    int actionCards;
+    int consecutiveWins;
+    bool isBlocked;
+
+    Player(string n, int initialCards) 
+        : name(n), numberCards(initialCards), actionCards(0), 
+          consecutiveWins(0), isBlocked(false) {}
 };
 
 /*******************************************************************************
@@ -59,7 +75,7 @@ class SplitUnoArbiter {
 private:
     // Game Constants
     static constexpr int INITIAL_CARDS = 20;              // Starting number cards per player
-    static constexpr int INITIAL_NUMBER_DECK = 68;        // Remaining number cards (108 - 40)
+    static constexpr int INITIAL_NUMBER_DECK = 68;        // Remaining number cards
     static constexpr int INITIAL_ACTION_DECK = 32;        // Action cards available
     static constexpr int CONSECUTIVE_WINS_THRESHOLD = 2;  // Wins needed for bonus
     static constexpr int MAX_CARD_NUMBER = 9;             // Highest number card
@@ -68,45 +84,22 @@ private:
     static constexpr int CARD_7_NUMBER_DRAW = 2;          // Number cards from card 7
     static constexpr int CARD_7_ACTION_DRAW = 1;          // Action cards from card 7
     
-    // Player State
-    int playerACards;              // Player A's number card count
-    int playerBCards;              // Player B's number card count
-    int playerAActionCards;        // Player A's action card count
-    int playerBActionCards;        // Player B's action card count
-    int consecutiveWinsA;          // Player A's consecutive wins
-    int consecutiveWinsB;          // Player B's consecutive wins
-    string lastWinner;             // Last round winner ("A" or "B")
-    bool playerABlocked;           // Is Player A blocked next round?
-    bool playerBBlocked;           // Is Player B blocked next round?
-    
-    // Deck State
+    // Game State
+    vector<Player> players;        // List of players
     int numberDeckRemaining;       // Remaining number cards in deck
     int actionDeckRemaining;       // Remaining action cards in deck
-    
-    // Game State
     bool gameOver;                 // Has the game ended?
-    string winner;                 // Game winner ("A" or "B")
+    string winner;                 // Game winner name
 
     /***************************************************************************
      * INPUT VALIDATION HELPERS
      ***************************************************************************/
     
-    /**
-     * Clears the input buffer after a failed cin operation
-     */
     void clearInputBuffer() {
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
     }
     
-    /**
-     * Gets a validated integer input within a specified range
-     * 
-     * @param prompt The message to display to the user
-     * @param min Minimum acceptable value (inclusive)
-     * @param max Maximum acceptable value (inclusive)
-     * @return A valid integer within [min, max]
-     */
     int getValidatedInt(const string& prompt, int min, int max) {
         int value;
         while (true) {
@@ -126,28 +119,18 @@ private:
         }
     }
     
-    /**
-     * Gets a validated string input from a set of valid options
-     * 
-     * @param prompt The message to display to the user
-     * @param validOptions Vector of acceptable responses (case-insensitive)
-     * @return A valid option in uppercase
-     */
     string getValidatedString(const string& prompt, const vector<string>& validOptions) {
         string input;
         while (true) {
             cout << prompt;
             if (cin >> input) {
                 input = toUpper(input);
-                
-                // Check if input matches any valid option
                 for (const auto& option : validOptions) {
                     if (input == toUpper(option)) {
                         clearInputBuffer();
                         return input;
                     }
                 }
-                
                 cout << ">>> Error: Invalid option. Please try again.\n";
             } else {
                 cout << ">>> Error: Invalid input. Please try again.\n";
@@ -156,55 +139,59 @@ private:
         }
     }
     
-    /**
-     * Converts a string to uppercase
-     * 
-     * @param s The string to convert
-     * @return The uppercase version of the string
-     */
     string toUpper(string s) const {
         transform(s.begin(), s.end(), s.begin(), ::toupper);
         return s;
     }
+
+    // Helper to get a player index by name or selection
+    int getValidatedPlayerIndex(const string& prompt, int excludeIndex = -1) {
+        cout << prompt << endl;
+        for (size_t i = 0; i < players.size(); ++i) {
+            if (static_cast<int>(i) == excludeIndex) continue;
+            cout << "  (" << i + 1 << ") " << players[i].name << endl;
+        }
+        
+        while (true) {
+            int choice = getValidatedInt("Select Player: ", 1, players.size());
+            int index = choice - 1;
+            if (index == excludeIndex) {
+                cout << ">>> Error: You cannot select yourself/excluded player.\n";
+            } else {
+                return index;
+            }
+        }
+    }
+
+    ActionType parseActionType(const string& actionStr) {
+        if (actionStr == "BLOCK") return ActionType::BLOCK;
+        if (actionStr == "SKIP") return ActionType::SKIP;
+        if (actionStr == "REVERSE") return ActionType::REVERSE;
+        if (actionStr == "COLOR") return ActionType::COLOR_CHANGE;
+        if (actionStr == "WILD") return ActionType::WILD;
+        if (actionStr == "+2") return ActionType::DRAW_TWO;
+        if (actionStr == "+4") return ActionType::DRAW_FOUR;
+        if (actionStr == "TRUTH") return ActionType::TRUTH;
+        if (actionStr == "DARE") return ActionType::DARE;
+        return ActionType::UNKNOWN;
+    }
     
-    /**
-     * Safely draws cards from the number deck with exhaustion check
-     * 
-     * @param amount Number of cards to draw
-     * @return Actual number of cards drawn (may be less if deck exhausted)
-     */
     int drawFromNumberDeck(int amount) {
         if (numberDeckRemaining <= 0) {
             cout << ">>> WARNING: Number deck is exhausted! No cards drawn.\n";
             return 0;
         }
-        
         int actualDraw = min(amount, numberDeckRemaining);
-        if (actualDraw < amount) {
-            cout << ">>> WARNING: Only " << actualDraw << " cards available in number deck.\n";
-        }
-        
         numberDeckRemaining -= actualDraw;
         return actualDraw;
     }
     
-    /**
-     * Safely draws cards from the action deck with exhaustion check
-     * 
-     * @param amount Number of cards to draw
-     * @return Actual number of cards drawn (may be less if deck exhausted)
-     */
     int drawFromActionDeck(int amount) {
         if (actionDeckRemaining <= 0) {
             cout << ">>> WARNING: Action deck is exhausted! No cards drawn.\n";
             return 0;
         }
-        
         int actualDraw = min(amount, actionDeckRemaining);
-        if (actualDraw < amount) {
-            cout << ">>> WARNING: Only " << actualDraw << " cards available in action deck.\n";
-        }
-        
         actionDeckRemaining -= actualDraw;
         return actualDraw;
     }
@@ -213,26 +200,21 @@ private:
      * GAME STATE DISPLAY
      ***************************************************************************/
     
-    /**
-     * Displays the current game state in a formatted table
-     */
     void displayGameState() const {
         cout << "\n" << string(60, '=') << endl;
         cout << "           SPLIT UNO - GAME STATE" << endl;
         cout << string(60, '=') << endl;
-        cout << "Player A: " << playerACards << " Number Cards | " 
-             << playerAActionCards << " Action Cards";
-        if (playerABlocked) cout << " [BLOCKED]";
-        cout << endl;
         
-        cout << "Player B: " << playerBCards << " Number Cards | " 
-             << playerBActionCards << " Action Cards";
-        if (playerBBlocked) cout << " [BLOCKED]";
-        cout << endl;
+        for (const auto& p : players) {
+            cout << left << setw(15) << p.name 
+                 << ": " << setw(2) << p.numberCards << " Num | " 
+                 << setw(2) << p.actionCards << " Act";
+            if (p.isBlocked) cout << " [BLOCKED]";
+            if (p.consecutiveWins > 0) cout << " (Wins: " << p.consecutiveWins << ")";
+            cout << endl;
+        }
         
-        cout << "\nConsecutive Wins: A=" << consecutiveWinsA 
-             << " | B=" << consecutiveWinsB << endl;
-        cout << "Deck Remaining: Numbers=" << numberDeckRemaining 
+        cout << "\nDeck Remaining: Numbers=" << numberDeckRemaining 
              << " | Actions=" << actionDeckRemaining << endl;
         cout << string(60, '=') << "\n" << endl;
     }
@@ -241,146 +223,97 @@ private:
      * NUMBER CARD ROUND HANDLERS
      ***************************************************************************/
     
-    /**
-     * Processes special effects of number cards 0 and 7
-     * 
-     * Card 0: The player who plays it draws 1 random card from opponent
-     * Card 7: Opponent draws 2 number cards and 1 action card
-     * 
-     * @param numA Player A's card number
-     * @param numB Player B's card number
-     */
-    void processNumberCardEffects(int numA, int numB) {
-        // Handle card 0 effect (steal from opponent)
-        if (numA == 0 && playerBCards > 0) {
-            cout << "\n>>> Player A played 0! A draws 1 random card from B's hand." << endl;
-            playerACards++;
-            playerBCards--;
-        }
-        if (numB == 0 && playerACards > 0) {
-            cout << "\n>>> Player B played 0! B draws 1 random card from A's hand." << endl;
-            playerBCards++;
-            playerACards--;
-        }
-
-        // Handle card 7 effect (opponent draws penalty cards)
-        if (numA == 7) {
-            cout << "\n>>> Player A played 7! B must draw 2 Number Cards and 1 Action Card." << endl;
-            int numberDrawn = drawFromNumberDeck(CARD_7_NUMBER_DRAW);
-            int actionDrawn = drawFromActionDeck(CARD_7_ACTION_DRAW);
-            playerBCards += numberDrawn;
-            playerBActionCards += actionDrawn;
-        }
-        if (numB == 7) {
-            cout << "\n>>> Player B played 7! A must draw 2 Number Cards and 1 Action Card." << endl;
-            int numberDrawn = drawFromNumberDeck(CARD_7_NUMBER_DRAW);
-            int actionDrawn = drawFromActionDeck(CARD_7_ACTION_DRAW);
-            playerACards += numberDrawn;
-            playerAActionCards += actionDrawn;
-        }
-    }
-    
-    /**
-     * Resolves the number card bid and updates player states
-     * 
-     * @param numA Player A's card number
-     * @param numB Player B's card number
-     */
-    void resolveNumberBid(int numA, int numB) {
-        if (numA > numB) {
-            // Player A wins
-            cout << "\n>>> Player A WINS the round! (" << numA << " > " << numB << ")" << endl;
-            playerACards = max(0, playerACards - 1);  // Shed card (prevent negative)
-            int drawn = drawFromNumberDeck(1);
-            playerBCards += drawn;  // Draw penalty
-            consecutiveWinsA++;
-            consecutiveWinsB = 0;
-            lastWinner = "A";
-        } else if (numB > numA) {
-            // Player B wins
-            cout << "\n>>> Player B WINS the round! (" << numB << " > " << numA << ")" << endl;
-            playerBCards = max(0, playerBCards - 1);  // Shed card (prevent negative)
-            int drawn = drawFromNumberDeck(1);
-            playerACards += drawn;  // Draw penalty
-            consecutiveWinsB++;
-            consecutiveWinsA = 0;
-            lastWinner = "B";
-        } else {
-            // Tie - both shed and draw
-            cout << "\n>>> TIE! Both players shed their cards and draw 1 card." << endl;
-            playerACards = max(0, playerACards - 1);
-            playerBCards = max(0, playerBCards - 1);
-            int drawnA = drawFromNumberDeck(1);
-            int drawnB = drawFromNumberDeck(1);
-            playerACards += drawnA;
-            playerBCards += drawnB;
-            consecutiveWinsA = 0;
-            consecutiveWinsB = 0;
-        }
-    }
-    
-    /**
-     * Handles a standard number card round where both players play
-     */
     void handleNumberRound() {
-        // Check for blocked players
-        if (playerABlocked) {
-            cout << "\n>>> Player A is BLOCKED! Player B plays alone." << endl;
-            handleBlockedRound('B');
-            playerABlocked = false;
+        vector<int> playedCards(players.size());
+        int maxCard = -1;
+        vector<int> winners;
+
+        // 1. Collect cards from all non-blocked players
+        for (size_t i = 0; i < players.size(); ++i) {
+            if (players[i].isBlocked) {
+                cout << ">>> " << players[i].name << " is BLOCKED and skips this round." << endl;
+                players[i].isBlocked = false; // Unblock for next round
+                playedCards[i] = -1; // Marker for no card
+                continue;
+            }
+
+            playedCards[i] = getValidatedInt(
+                "Enter " + players[i].name + "'s card (0-9): ", 
+                MIN_CARD_NUMBER, MAX_CARD_NUMBER
+            );
+
+            if (playedCards[i] > maxCard) {
+                maxCard = playedCards[i];
+                winners.clear();
+                winners.push_back(i);
+            } else if (playedCards[i] == maxCard) {
+                winners.push_back(i);
+            }
+        }
+
+        // 2. Process Special Effects (0 and 7)
+        for (size_t i = 0; i < players.size(); ++i) {
+            if (playedCards[i] == 0) {
+                cout << "\n>>> " << players[i].name << " played 0! Steal 1 card." << endl;
+                int targetIdx = getValidatedPlayerIndex("Who to steal from?", i);
+                if (players[targetIdx].numberCards > 0) {
+                    players[i].numberCards++;
+                    players[targetIdx].numberCards--;
+                    cout << ">>> Stolen 1 card from " << players[targetIdx].name << "." << endl;
+                } else {
+                    cout << ">>> Target has no cards to steal!" << endl;
+                }
+            }
+            if (playedCards[i] == 7) {
+                cout << "\n>>> " << players[i].name << " played 7! Target draws penalty." << endl;
+                int targetIdx = getValidatedPlayerIndex("Who draws penalty?", i);
+                int numDrawn = drawFromNumberDeck(CARD_7_NUMBER_DRAW);
+                int actDrawn = drawFromActionDeck(CARD_7_ACTION_DRAW);
+                players[targetIdx].numberCards += numDrawn;
+                players[targetIdx].actionCards += actDrawn;
+                cout << ">>> " << players[targetIdx].name << " draws " 
+                     << numDrawn << " Num and " << actDrawn << " Act cards." << endl;
+            }
+        }
+
+        // 3. Resolve Winner
+        if (winners.empty()) {
+            cout << ">>> All players were blocked! No winner." << endl;
             return;
         }
-        if (playerBBlocked) {
-            cout << "\n>>> Player B is BLOCKED! Player A plays alone." << endl;
-            handleBlockedRound('A');
-            playerBBlocked = false;
-            return;
-        }
 
-        // Get card inputs with validation
-        int numA = getValidatedInt("Enter Player A's card (0-9): ", MIN_CARD_NUMBER, MAX_CARD_NUMBER);
-        int numB = getValidatedInt("Enter Player B's card (0-9): ", MIN_CARD_NUMBER, MAX_CARD_NUMBER);
+        if (winners.size() == 1) {
+            int winnerIdx = winners[0];
+            cout << "\n>>> " << players[winnerIdx].name << " WINS the round with " << maxCard << "!" << endl;
+            
+            // Winner sheds 1 card
+            players[winnerIdx].numberCards = max(0, players[winnerIdx].numberCards - 1);
+            players[winnerIdx].consecutiveWins++;
 
-        // Process special card effects first
-        processNumberCardEffects(numA, numB);
-
-        // Resolve the bid
-        resolveNumberBid(numA, numB);
-
-        // Check for consecutive win bonuses and win conditions
-        checkConsecutiveWins();
-        checkWinCondition();
-    }
-    
-    /**
-     * Handles a round where one player is blocked
-     * 
-     * @param activePlayer The player who is NOT blocked ('A' or 'B')
-     */
-    void handleBlockedRound(char activePlayer) {
-        [[maybe_unused]] int card = getValidatedInt(
-            string("Enter Player ") + activePlayer + "'s card (0-9): ",
-            MIN_CARD_NUMBER, MAX_CARD_NUMBER
-        );
-        
-        if (activePlayer == 'A') {
-            cout << "\n>>> Player A sheds their card. Player B draws 1 card (penalty)." << endl;
-            playerACards = max(0, playerACards - 1);
-            int drawn = drawFromNumberDeck(1);
-            playerBCards += drawn;
-            consecutiveWinsA++;
-            consecutiveWinsB = 0;
-            lastWinner = "A";
+            // Reset others' consecutive wins and make them draw penalty
+            for (size_t i = 0; i < players.size(); ++i) {
+                if (static_cast<int>(i) != winnerIdx && playedCards[i] != -1) {
+                    players[i].consecutiveWins = 0;
+                    int drawn = drawFromNumberDeck(1);
+                    players[i].numberCards += drawn;
+                }
+            }
         } else {
-            cout << "\n>>> Player B sheds their card. Player A draws 1 card (penalty)." << endl;
-            playerBCards = max(0, playerBCards - 1);
-            int drawn = drawFromNumberDeck(1);
-            playerACards += drawn;
-            consecutiveWinsB++;
-            consecutiveWinsA = 0;
-            lastWinner = "B";
+            cout << "\n>>> TIE between ";
+            for (size_t i = 0; i < winners.size(); ++i) {
+                cout << players[winners[i]].name << (i < winners.size()-1 ? ", " : "");
+                // Tied players shed 1 card
+                players[winners[i]].numberCards = max(0, players[winners[i]].numberCards - 1);
+                players[winners[i]].consecutiveWins = 0; // Reset consecutive on tie? Rules ambiguous, resetting for balance.
+            }
+            cout << "!" << endl;
+            cout << ">>> Tied players shed 1 card. All players draw 1 card." << endl; // House rule for ties
+            
+            for (auto& p : players) {
+                p.numberCards += drawFromNumberDeck(1);
+            }
         }
-        
+
         checkConsecutiveWins();
         checkWinCondition();
     }
@@ -389,293 +322,189 @@ private:
      * ACTION CARD HANDLERS
      ***************************************************************************/
     
-    /**
-     * Routes action card handling to the appropriate handler function
-     */
     void handleActionCard() {
-        string player = getValidatedString(
-            "Which player is playing an action card (A/B)? ",
-            {"A", "B"}
-        );
+        int playerIdx = getValidatedPlayerIndex("Who is playing an action card?");
         
-        string action = getValidatedString(
+        string actionStr = getValidatedString(
             "Enter action card type (BLOCK/REVERSE/COLOR/+2/+4/TRUTH/DARE): ",
             {"BLOCK", "SKIP", "REVERSE", "COLOR", "WILD", "+2", "+4", "TRUTH", "DARE"}
         );
+        ActionType type = parseActionType(actionStr);
 
-        // Route to appropriate handler
-        if (action == "BLOCK" || action == "SKIP") {
-            handleBlockCard(player);
-        } else if (action == "REVERSE") {
-            handleReverseCard(player);
-        } else if (action == "COLOR" || action == "WILD") {
-            handleColorChangeCard(player);
-        } else if (action == "+2") {
-            handleDrawCard(player, 2);
-        } else if (action == "+4") {
-            handleDrawCard(player, 4);
-        } else if (action == "TRUTH") {
-            handleTruthCard(player);
-        } else if (action == "DARE") {
-            handleDareCard(player);
+        switch (type) {
+            case ActionType::BLOCK:
+            case ActionType::SKIP:
+                handleBlockCard(playerIdx);
+                break;
+            case ActionType::REVERSE:
+                handleReverseCard(playerIdx);
+                break;
+            case ActionType::COLOR_CHANGE:
+            case ActionType::WILD:
+                handleColorChangeCard(playerIdx);
+                break;
+            case ActionType::DRAW_TWO:
+                handleDrawCard(playerIdx, 2);
+                break;
+            case ActionType::DRAW_FOUR:
+                handleDrawCard(playerIdx, 4);
+                break;
+            case ActionType::TRUTH:
+                handleTruthCard(playerIdx);
+                break;
+            case ActionType::DARE:
+                handleDareCard(playerIdx);
+                break;
+            default:
+                cout << ">>> Error: Unknown action type." << endl;
         }
     }
-    
-    /**
-     * Handles BLOCK/SKIP card effect
-     * Blocks opponent from next round unless they also play BLOCK
-     * 
-     * @param player The player who played the BLOCK card ("A" or "B")
-     */
-    void handleBlockCard(const string& player) {
-        cout << "\n>>> " << player << " plays BLOCK card!" << endl;
+
+    void handleBlockCard(int playerIdx) {
+        cout << "\n>>> " << players[playerIdx].name << " plays BLOCK!" << endl;
+        int targetIdx = getValidatedPlayerIndex("Who to BLOCK?", playerIdx);
         
-        string opponent = getValidatedString(
-            "Did the opponent also play BLOCK? (Y/N): ",
+        string counter = getValidatedString(
+            "Did " + players[targetIdx].name + " play a BLOCK to counter? (Y/N): ",
             {"Y", "N", "YES", "NO"}
         );
-        
-        if (opponent == "Y" || opponent == "YES") {
-            // Both played BLOCK - effects cancel
-            cout << ">>> Both played BLOCK! Effects cancel. Both shed 1 Number Card." << endl;
-            playerACards = max(0, playerACards - 1);
-            playerBCards = max(0, playerBCards - 1);
-            playerAActionCards = max(0, playerAActionCards - 1);
-            playerBActionCards = max(0, playerBActionCards - 1);
+
+        if (counter == "Y" || counter == "YES") {
+            cout << ">>> Countered! Both shed 1 Number Card." << endl;
+            players[playerIdx].numberCards = max(0, players[playerIdx].numberCards - 1);
+            players[targetIdx].numberCards = max(0, players[targetIdx].numberCards - 1);
+            players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
+            players[targetIdx].actionCards = max(0, players[targetIdx].actionCards - 1);
         } else {
-            // Only one player played BLOCK - opponent is blocked
-            if (player == "A") {
-                cout << ">>> Player B is BLOCKED for next round!" << endl;
-                playerBBlocked = true;
-                playerAActionCards = max(0, playerAActionCards - 1);
-            } else {
-                cout << ">>> Player A is BLOCKED for next round!" << endl;
-                playerABlocked = true;
-                playerBActionCards = max(0, playerBActionCards - 1);
-            }
+            cout << ">>> " << players[targetIdx].name << " is BLOCKED for next round!" << endl;
+            players[targetIdx].isBlocked = true;
+            players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
         }
     }
-    
-    /**
-     * Handles REVERSE card effect
-     * Players exchange their entire hands (number and action cards)
-     * 
-     * @param player The player who played the REVERSE card ("A" or "B")
-     */
-    void handleReverseCard(const string& player) {
-        cout << "\n>>> " << player << " plays REVERSE card!" << endl;
-        cout << ">>> Players exchange their entire hands!" << endl;
+
+    void handleReverseCard(int playerIdx) {
+        cout << "\n>>> " << players[playerIdx].name << " plays REVERSE (Swap Hands)!" << endl;
+        int targetIdx = getValidatedPlayerIndex("Who to swap hands with?", playerIdx);
         
-        swap(playerACards, playerBCards);
-        swap(playerAActionCards, playerBActionCards);
+        cout << ">>> Swapping hands between " << players[playerIdx].name 
+             << " and " << players[targetIdx].name << "!" << endl;
+             
+        swap(players[playerIdx].numberCards, players[targetIdx].numberCards);
+        swap(players[playerIdx].actionCards, players[targetIdx].actionCards);
         
-        // Remove the REVERSE card from the player who played it
-        if (player == "A") {
-            playerAActionCards = max(0, playerAActionCards - 1);
-        } else {
-            playerBActionCards = max(0, playerBActionCards - 1);
-        }
+        // Player who played it sheds the card (from their NEW hand count? Or old? 
+        // Usually you play then swap. So decrement first.)
+        // Actually, if I swap counts, the card I played is gone from my old hand.
+        // But now I have the opponent's hand. 
+        // Let's assume the card is discarded BEFORE the swap.
+        // But wait, I just swapped. So I need to decrement from the TARGET's hand 
+        // (which is now my old hand) or just decrement my current hand?
+        // Logic: I play card -> Count - 1. Then Swap.
+        // So:
+        // 1. Decrement player's action card count (the card played).
+        players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
+        // 2. Swap.
+        swap(players[playerIdx].numberCards, players[targetIdx].numberCards);
+        swap(players[playerIdx].actionCards, players[targetIdx].actionCards);
     }
-    
-    /**
-     * Handles COLOR CHANGE/WILD card effect
-     * Both players shed 1 number card, player chooses color for opponent
-     * 
-     * @param player The player who played the COLOR CHANGE card ("A" or "B")
-     */
-    void handleColorChangeCard(const string& player) {
-        cout << "\n>>> " << player << " plays COLOR CHANGE card!" << endl;
-        cout << ">>> Both players shed 1 Number Card each." << endl;
+
+    void handleColorChangeCard(int playerIdx) {
+        cout << "\n>>> " << players[playerIdx].name << " plays COLOR CHANGE!" << endl;
+        cout << ">>> All players shed 1 Number Card." << endl;
         
-        playerACards = max(0, playerACards - 1);
-        playerBCards = max(0, playerBCards - 1);
+        for (auto& p : players) {
+            p.numberCards = max(0, p.numberCards - 1);
+        }
         
         string color = getValidatedString(
-            "Enter the color chosen for opponent's next play (R/Y/G/B): ",
+            "Enter chosen color (R/Y/G/B): ",
             {"R", "Y", "G", "B", "RED", "YELLOW", "GREEN", "BLUE"}
         );
-        cout << ">>> Opponent must play " << color << " in the next round." << endl;
-        
-        if (player == "A") {
-            playerAActionCards = max(0, playerAActionCards - 1);
-        } else {
-            playerBActionCards = max(0, playerBActionCards - 1);
-        }
+        cout << ">>> Next player must play " << color << "." << endl;
+        players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
     }
-    
-    /**
-     * Handles +2 or +4 draw cards (unified implementation)
-     * Opponent can counter with their own +2/+4, otherwise draws penalty
-     * 
-     * @param player The player who played the draw card ("A" or "B")
-     * @param drawAmount The number of cards to draw (2 or 4)
-     */
-    void handleDrawCard(const string& player, int drawAmount) {
-        cout << "\n>>> " << player << " plays +" << drawAmount << " card!" << endl;
+
+    void handleDrawCard(int playerIdx, int amount) {
+        cout << "\n>>> " << players[playerIdx].name << " plays +" << amount << "!" << endl;
+        int targetIdx = getValidatedPlayerIndex("Who to attack?", playerIdx);
         
+        // Check for counter
         string hasCounter = getValidatedString(
-            "Did opponent play an action card? (Y/N): ",
+            "Did " + players[targetIdx].name + " counter with +2/+4? (Y/N): ",
             {"Y", "N", "YES", "NO"}
         );
-        
+
         if (hasCounter == "Y" || hasCounter == "YES") {
-            // Opponent countered with their own draw card
-            string oppCard = getValidatedString(
-                "Enter opponent's action card (+2/+4): ",
-                {"+2", "+4"}
-            );
+            string oppCard = getValidatedString("Enter counter card (+2/+4): ", {"+2", "+4"});
+            int oppAmount = (oppCard == "+2") ? 2 : 4;
             
-            int oppDraw = (oppCard == "+2") ? 2 : 4;
-            
-            if (drawAmount != oppDraw) {
-                // Different values - higher wins, lower draws difference + 1
-                int difference = abs(drawAmount - oppDraw);
-                int loserDraw = 1 + difference;  // 1 for losing + difference
-                
-                if (drawAmount > oppDraw) {
-                    // Player wins the counter
-                    cout << ">>> Both shed their action cards. Opponent draws " 
-                         << loserDraw << " cards (1 loss + " << difference << " difference)." << endl;
-                    int drawn = drawFromNumberDeck(loserDraw);
-                    
-                    if (player == "A") {
-                        playerAActionCards = max(0, playerAActionCards - 1);
-                        playerBActionCards = max(0, playerBActionCards - 1);
-                        playerBCards += drawn;
-                    } else {
-                        playerBActionCards = max(0, playerBActionCards - 1);
-                        playerAActionCards = max(0, playerAActionCards - 1);
-                        playerACards += drawn;
-                    }
-                } else {
-                    // Opponent wins the counter
-                    cout << ">>> Both shed their action cards. " << player 
-                         << " draws " << loserDraw << " cards (1 loss + " << difference << " difference)." << endl;
-                    int drawn = drawFromNumberDeck(loserDraw);
-                    
-                    if (player == "A") {
-                        playerAActionCards = max(0, playerAActionCards - 1);
-                        playerBActionCards = max(0, playerBActionCards - 1);
-                        playerACards += drawn;
-                    } else {
-                        playerBActionCards = max(0, playerBActionCards - 1);
-                        playerAActionCards = max(0, playerAActionCards - 1);
-                        playerBCards += drawn;
-                    }
-                }
+            int diff = abs(amount - oppAmount);
+            int loserDraw = 1 + diff;
+
+            if (amount > oppAmount) {
+                cout << ">>> " << players[playerIdx].name << " wins counter! " 
+                     << players[targetIdx].name << " draws " << loserDraw << "." << endl;
+                players[targetIdx].numberCards += drawFromNumberDeck(loserDraw);
+            } else if (oppAmount > amount) {
+                cout << ">>> " << players[targetIdx].name << " wins counter! " 
+                     << players[playerIdx].name << " draws " << loserDraw << "." << endl;
+                players[playerIdx].numberCards += drawFromNumberDeck(loserDraw);
             } else {
-                // Same values - both shed and draw 1
-                cout << ">>> Both shed action cards and draw 1 Number Card each." << endl;
-                playerAActionCards = max(0, playerAActionCards - 1);
-                playerBActionCards = max(0, playerBActionCards - 1);
-                int drawnA = drawFromNumberDeck(1);
-                int drawnB = drawFromNumberDeck(1);
-                playerACards += drawnA;
-                playerBCards += drawnB;
+                cout << ">>> Tie! Both shed action card and draw 1 Number Card." << endl;
+                players[playerIdx].numberCards += drawFromNumberDeck(1);
+                players[targetIdx].numberCards += drawFromNumberDeck(1);
             }
+            // Both shed their action cards
+            players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
+            players[targetIdx].actionCards = max(0, players[targetIdx].actionCards - 1);
         } else {
-            // No counter - opponent draws full penalty
-            int drawn = drawFromNumberDeck(drawAmount);
-            
-            if (player == "A") {
-                cout << ">>> Player B draws " << drawAmount << " cards!" << endl;
-                playerAActionCards = max(0, playerAActionCards - 1);
-                playerBCards += drawn;
-            } else {
-                cout << ">>> Player A draws " << drawAmount << " cards!" << endl;
-                playerBActionCards = max(0, playerBActionCards - 1);
-                playerACards += drawn;
-            }
+            cout << ">>> " << players[targetIdx].name << " takes the hit! Draws " << amount << "." << endl;
+            players[targetIdx].numberCards += drawFromNumberDeck(amount);
+            players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
         }
     }
-    
-    /**
-     * Handles TRUTH card effect
-     * Opponent must answer truth question or face penalty
-     * Player who played TRUTH sheds 1 number card regardless
-     * 
-     * @param player The player who played the TRUTH card ("A" or "B")
-     */
-    void handleTruthCard(const string& player) {
-        cout << "\n>>> " << player << " plays TRUTH card!" << endl;
+
+    void handleTruthCard(int playerIdx) {
+        cout << "\n>>> " << players[playerIdx].name << " plays TRUTH!" << endl;
+        int targetIdx = getValidatedPlayerIndex("Who to ask?", playerIdx);
         
         string response = getValidatedString(
-            "Did opponent answer the truth question? (Y/N): ",
+            "Did " + players[targetIdx].name + " answer? (Y/N): ",
             {"Y", "N", "YES", "NO"}
         );
-        
+
         if (response == "N" || response == "NO") {
-            // Opponent refused - apply penalty
             int choice = getValidatedInt(
-                "Choose penalty:\n"
-                "  (1) Take 2 action cards, opponent draws 2 number cards\n"
-                "  (2) Opponent draws 5 number cards\n"
-                "Choice: ", 
-                1, 2
-            );
+                "Penalty Choice:\n1. Attacker gets 2 Action, Target gets 2 Number\n2. Target gets 5 Number\nChoice: ", 1, 2);
             
             if (choice == 1) {
-                // Option 1: Player gains 2 action cards, opponent draws 2 number cards
-                int actionDrawn = drawFromActionDeck(2);
-                int numberDrawn = drawFromNumberDeck(2);
-                
-                if (player == "A") {
-                    playerAActionCards += actionDrawn;
-                    playerBCards += numberDrawn;
-                } else {
-                    playerBActionCards += actionDrawn;
-                    playerACards += numberDrawn;
-                }
+                players[playerIdx].actionCards += drawFromActionDeck(2);
+                players[targetIdx].numberCards += drawFromNumberDeck(2);
             } else {
-                // Option 2: Opponent draws 5 number cards
-                int drawn = drawFromNumberDeck(5);
-                
-                if (player == "A") {
-                    playerBCards += drawn;
-                } else {
-                    playerACards += drawn;
-                }
+                players[targetIdx].numberCards += drawFromNumberDeck(5);
             }
         }
         
-        // Player who played TRUTH sheds 1 action card and 1 number card
-        if (player == "A") {
-            playerAActionCards = max(0, playerAActionCards - 1);
-            playerACards = max(0, playerACards - 1);
-        } else {
-            playerBActionCards = max(0, playerBActionCards - 1);
-            playerBCards = max(0, playerBCards - 1);
-        }
+        players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
+        players[playerIdx].numberCards = max(0, players[playerIdx].numberCards - 1);
     }
-    
-    /**
-     * Handles DARE card effect
-     * Opponent must complete dare or forfeit the entire game
-     * 
-     * @param player The player who played the DARE card ("A" or "B")
-     */
-    void handleDareCard(const string& player) {
-        cout << "\n>>> " << player << " plays DARE card!" << endl;
+
+    void handleDareCard(int playerIdx) {
+        cout << "\n>>> " << players[playerIdx].name << " plays DARE!" << endl;
+        int targetIdx = getValidatedPlayerIndex("Who to dare?", playerIdx);
         
         string response = getValidatedString(
-            "Did opponent complete the dare? (Y/N): ",
+            "Did " + players[targetIdx].name + " complete the dare? (Y/N): ",
             {"Y", "N", "YES", "NO"}
         );
-        
+
         if (response == "N" || response == "NO") {
-            // Opponent forfeits - game over
-            cout << ">>> Opponent forfeits! " << player << " WINS THE GAME!" << endl;
+            cout << ">>> " << players[targetIdx].name << " FORFEITS! " << players[playerIdx].name << " WINS!" << endl;
             gameOver = true;
-            winner = player;
+            winner = players[playerIdx].name;
         } else {
-            // Dare completed - player sheds cards
-            if (player == "A") {
-                playerAActionCards = max(0, playerAActionCards - 1);
-                playerACards = max(0, playerACards - 1);
-            } else {
-                playerBActionCards = max(0, playerBActionCards - 1);
-                playerBCards = max(0, playerBCards - 1);
-            }
+            players[playerIdx].actionCards = max(0, players[playerIdx].actionCards - 1);
+            players[playerIdx].numberCards = max(0, players[playerIdx].numberCards - 1);
         }
     }
 
@@ -683,254 +512,125 @@ private:
      * GAME FLOW LOGIC
      ***************************************************************************/
     
-    /**
-     * Checks and handles consecutive win bonuses
-     * After 2 consecutive wins, player chooses:
-     *   (1) Draw 1 action card, or
-     *   (2) Opponent draws 2 number cards
-     */
     void checkConsecutiveWins() {
-        if (consecutiveWinsA >= CONSECUTIVE_WINS_THRESHOLD) {
-            cout << "\n>>> Player A won " << CONSECUTIVE_WINS_THRESHOLD << " consecutive rounds!" << endl;
-            
-            int choice = getValidatedInt(
-                "Choose: (1) Draw 1 Action Card OR (2) Player B draws 2 Number Cards: ",
-                1, 2
-            );
-            
-            if (choice == 1) {
-                int drawn = drawFromActionDeck(1);
-                playerAActionCards += drawn;
-                cout << ">>> Player A draws 1 Action Card." << endl;
-            } else {
-                int drawn = drawFromNumberDeck(2);
-                playerBCards += drawn;
-                cout << ">>> Player B draws 2 Number Cards." << endl;
+        for (auto& p : players) {
+            if (p.consecutiveWins >= CONSECUTIVE_WINS_THRESHOLD) {
+                cout << "\n>>> " << p.name << " has " << CONSECUTIVE_WINS_THRESHOLD << " consecutive wins!" << endl;
+                int choice = getValidatedInt(
+                    "Choose: (1) Draw 1 Action Card OR (2) All opponents draw 2 Number Cards: ", 1, 2);
+                
+                if (choice == 1) {
+                    p.actionCards += drawFromActionDeck(1);
+                } else {
+                    for (auto& opp : players) {
+                        if (opp.name != p.name) {
+                            opp.numberCards += drawFromNumberDeck(2);
+                        }
+                    }
+                }
+                p.consecutiveWins = 0;
             }
-            consecutiveWinsA = 0;
-        }
-        
-        if (consecutiveWinsB >= CONSECUTIVE_WINS_THRESHOLD) {
-            cout << "\n>>> Player B won " << CONSECUTIVE_WINS_THRESHOLD << " consecutive rounds!" << endl;
-            
-            int choice = getValidatedInt(
-                "Choose: (1) Draw 1 Action Card OR (2) Player A draws 2 Number Cards: ",
-                1, 2
-            );
-            
-            if (choice == 1) {
-                int drawn = drawFromActionDeck(1);
-                playerBActionCards += drawn;
-                cout << ">>> Player B draws 1 Action Card." << endl;
-            } else {
-                int drawn = drawFromNumberDeck(2);
-                playerACards += drawn;
-                cout << ">>> Player A draws 2 Number Cards." << endl;
-            }
-            consecutiveWinsB = 0;
         }
     }
     
-    /**
-     * Handles the +2/+4 challenge when a player reaches 0 cards
-     * 
-     * @param winningPlayer The player who reached 0 cards ('A' or 'B')
-     * @param challengingPlayer The opponent who might challenge ('A' or 'B')
-     */
-    void handleDrawChallenge(char winningPlayer, char challengingPlayer) {
-        string challenge = getValidatedString(
-            string("Does Player ") + challengingPlayer + " have a +2 or +4 to challenge? (Y/N): ",
-            {"Y", "N", "YES", "NO"}
-        );
+    void handleDrawChallenge(int winnerIdx) {
+        // Check if any other player wants to challenge
+        cout << "\n>>> " << players[winnerIdx].name << " has 0 cards! Checking for challenges..." << endl;
         
-        if (challenge == "Y" || challenge == "YES") {
-            string isOnlyCard = getValidatedString(
-                string("Is this Player ") + challengingPlayer + "'s ONLY card? (Y/N): ",
-                {"Y", "N", "YES", "NO"}
-            );
-            
-            if (isOnlyCard == "Y" || isOnlyCard == "YES") {
-                // Cannot play their only card
-                cout << ">>> Player " << challengingPlayer << " cannot play their only +2/+4 card!" << endl;
-                cout << ">>> Player " << challengingPlayer << " draws 1 Number Card as penalty." << endl;
-                
-                int drawn = drawFromNumberDeck(1);
-                if (challengingPlayer == 'A') {
-                    playerACards += drawn;
-                } else {
-                    playerBCards += drawn;
-                }
-            } else {
-                // Valid challenge
-                string cardType = getValidatedString(
-                    "Enter card type (+2/+4): ",
-                    {"+2", "+4"}
-                );
-                
-                int drawAmount = (cardType == "+2") ? 2 : 4;
-                int drawn = drawFromNumberDeck(drawAmount);
-                
-                cout << ">>> Player " << challengingPlayer << " plays " << cardType 
-                     << "! Player " << winningPlayer << " draws " << drawAmount << " cards." << endl;
-                
-                if (winningPlayer == 'A') {
-                    playerACards += drawn;
-                } else {
-                    playerBCards += drawn;
-                }
-                
-                if (challengingPlayer == 'A') {
-                    playerAActionCards = max(0, playerAActionCards - 1);
-                } else {
-                    playerBActionCards = max(0, playerBActionCards - 1);
-                }
-            }
-        } else {
-            // No challenge - player wins
-            cout << "\n" << string(60, '*') << endl;
-            cout << "          PLAYER " << winningPlayer << " WINS THE GAME!" << endl;
-            cout << string(60, '*') << "\n" << endl;
+        string challenge = getValidatedString("Any challenges? (Y/N): ", {"Y", "N", "YES", "NO"});
+        if (challenge == "N" || challenge == "NO") {
             gameOver = true;
-            winner = string(1, winningPlayer);
+            winner = players[winnerIdx].name;
+            return;
         }
-    }
-    
-    /**
-     * Checks if either player has won the game (reached 0 number cards)
-     * Handles the +2/+4 challenge mechanic for last-turn defense
-     */
-    void checkWinCondition() {
-        if (playerACards == 0) {
-            cout << "\n>>> Player A has 0 cards! Checking for +2/+4 challenge..." << endl;
-            handleDrawChallenge('A', 'B');
-        }
+
+        int challengerIdx = getValidatedPlayerIndex("Who is challenging?", winnerIdx);
         
-        if (playerBCards == 0) {
-            cout << "\n>>> Player B has 0 cards! Checking for +2/+4 challenge..." << endl;
-            handleDrawChallenge('B', 'A');
+        // Logic: Challenger plays +2/+4. Winner must draw unless they have counter?
+        // Simplified: If valid challenge, winner draws.
+        string cardType = getValidatedString("Challenge card (+2/+4): ", {"+2", "+4"});
+        int amount = (cardType == "+2") ? 2 : 4;
+        
+        cout << ">>> Challenge accepted! " << players[winnerIdx].name << " draws " << amount << "." << endl;
+        players[winnerIdx].numberCards += drawFromNumberDeck(amount);
+        players[challengerIdx].actionCards = max(0, players[challengerIdx].actionCards - 1);
+    }
+    
+    void checkWinCondition() {
+        for (size_t i = 0; i < players.size(); ++i) {
+            if (players[i].numberCards == 0) {
+                handleDrawChallenge(i);
+                if (gameOver) return;
+            }
         }
     }
     
-    /**
-     * Allows manual adjustment of game state for arbiter corrections
-     */
     void manualAdjustment() {
         cout << "\n--- Manual Adjustment ---" << endl;
-        cout << "1. Adjust Player A Number Cards" << endl;
-        cout << "2. Adjust Player B Number Cards" << endl;
-        cout << "3. Adjust Player A Action Cards" << endl;
-        cout << "4. Adjust Player B Action Cards" << endl;
-        cout << "5. Reset Consecutive Wins" << endl;
+        int pIdx = getValidatedPlayerIndex("Select player to adjust:");
         
-        int choice = getValidatedInt("Choice: ", 1, 5);
+        cout << "1. Number Cards\n2. Action Cards\n3. Reset Wins" << endl;
+        int choice = getValidatedInt("Choice: ", 1, 3);
         
-        int newValue;
-        switch (choice) {
-            case 1:
-                newValue = getValidatedInt("Enter new count for Player A Number Cards: ", 0, 100);
-                playerACards = newValue;
-                break;
-            case 2:
-                newValue = getValidatedInt("Enter new count for Player B Number Cards: ", 0, 100);
-                playerBCards = newValue;
-                break;
-            case 3:
-                newValue = getValidatedInt("Enter new count for Player A Action Cards: ", 0, 50);
-                playerAActionCards = newValue;
-                break;
-            case 4:
-                newValue = getValidatedInt("Enter new count for Player B Action Cards: ", 0, 50);
-                playerBActionCards = newValue;
-                break;
-            case 5:
-                consecutiveWinsA = 0;
-                consecutiveWinsB = 0;
-                cout << ">>> Consecutive wins reset." << endl;
-                break;
+        if (choice == 1) {
+            players[pIdx].numberCards = getValidatedInt("New Count: ", 0, 100);
+        } else if (choice == 2) {
+            players[pIdx].actionCards = getValidatedInt("New Count: ", 0, 50);
+        } else {
+            players[pIdx].consecutiveWins = 0;
         }
     }
 
 public:
-    /**
-     * Constructor - Initializes game state
-     */
     SplitUnoArbiter() {
-        playerACards = INITIAL_CARDS;
-        playerBCards = INITIAL_CARDS;
-        playerAActionCards = 0;
-        playerBActionCards = 0;
-        consecutiveWinsA = 0;
-        consecutiveWinsB = 0;
-        lastWinner = "";
-        playerABlocked = false;
-        playerBBlocked = false;
         numberDeckRemaining = INITIAL_NUMBER_DECK;
         actionDeckRemaining = INITIAL_ACTION_DECK;
         gameOver = false;
-        winner = "";
     }
     
-    /**
-     * Main game loop - Handles user input and game flow
-     */
-    void run() {
+    void setupGame() {
         cout << "\n";
         cout << "╔════════════════════════════════════════════════════════════╗\n";
-        cout << "║          SPLIT UNO ARBITER - GAME TRACKER                  ║\n";
+        cout << "║          SPLIT UNO ARBITER - GAME TRACKER v3.0             ║\n";
         cout << "╚════════════════════════════════════════════════════════════╝\n";
-        cout << "\nInitializing game with " << INITIAL_CARDS << " cards each...\n";
         
+        int numPlayers = getValidatedInt("Enter number of players (2-6): ", 2, 6);
+        for (int i = 1; i <= numPlayers; ++i) {
+            string name;
+            cout << "Enter name for Player " << i << ": ";
+            cin >> name;
+            players.emplace_back(name, INITIAL_CARDS);
+        }
+        clearInputBuffer(); // Clear newline after name inputs
+    }
+    
+    void run() {
+        setupGame();
         displayGameState();
         
         while (!gameOver) {
             cout << "\n--- NEW ROUND ---" << endl;
-            cout << "Select action:" << endl;
-            cout << "  1. Play Number Card Round" << endl;
-            cout << "  2. Play Action Card" << endl;
-            cout << "  3. Display Game State" << endl;
-            cout << "  4. Manual Adjustment" << endl;
-            cout << "  5. End Game" << endl;
-            
+            cout << "1. Number Round\n2. Action Card\n3. Display State\n4. Adjust\n5. End Game" << endl;
             int choice = getValidatedInt("Choice: ", 1, 5);
             
             switch (choice) {
-                case 1:
-                    handleNumberRound();
-                    break;
-                case 2:
-                    handleActionCard();
-                    break;
-                case 3:
-                    displayGameState();
-                    break;
-                case 4:
-                    manualAdjustment();
-                    break;
-                case 5:
-                    gameOver = true;
-                    cout << "\n>>> Game ended by arbiter." << endl;
-                    break;
+                case 1: handleNumberRound(); break;
+                case 2: handleActionCard(); break;
+                case 3: displayGameState(); break;
+                case 4: manualAdjustment(); break;
+                case 5: gameOver = true; break;
             }
             
-            // Display state after gameplay actions
             if (!gameOver && (choice == 1 || choice == 2)) {
                 displayGameState();
             }
         }
         
-        // Final state display
-        cout << "\nFinal Game State:" << endl;
-        displayGameState();
-        
         if (!winner.empty()) {
-            cout << "\n🏆 WINNER: Player " << winner << " 🏆\n" << endl;
+            cout << "\n🏆 WINNER: " << winner << " 🏆\n" << endl;
         }
     }
 };
-
-/*******************************************************************************
- * MAIN ENTRY POINT
- ******************************************************************************/
 
 int main() {
     SplitUnoArbiter arbiter;
