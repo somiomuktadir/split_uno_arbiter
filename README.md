@@ -5,6 +5,7 @@ A command-line arbiter application for **Split UNO**, a creative variant of the 
 ## Overview
 
 Split UNO adds a new dimension to regular UNO by:
+- **Supporting 2-6 players** in competitive gameplay
 - **Separating number cards (0-9) and action cards** into different decks
 - Adding **Truth and Dare cards** for enhanced gameplay
 - Requiring players to **shed all 20 number cards** to win
@@ -14,6 +15,7 @@ The arbiter app helps track game state, resolve disputes, and maintain fair play
 
 ## Features
 
+✅ **Multi-Player Support** - Supports 2-6 players simultaneously  
 ✅ **Robust Input Validation** - Prevents crashes from invalid inputs  
 ✅ **Comprehensive Error Handling** - Graceful handling of edge cases  
 ✅ **Game State Tracking** - Monitors card counts, blocks, consecutive wins  
@@ -66,7 +68,7 @@ Run the arbiter application:
 
 ### Main Menu Options
 
-1. **Play Number Card Round** - Both players play number cards (0-9)
+1. **Play Number Card Round** - All players play number cards (0-9)
 2. **Play Action Card** - A player uses an action card
 3. **Display Game State** - View current card counts and status
 4. **Manual Adjustment** - Correct errors in game state
@@ -104,7 +106,14 @@ For detailed game rules, see [ruleset.pdf](ruleset.pdf).
 
 ## Version History
 
-### Version 2.0 (Current) - Code Quality Improvements
+### Version 3.0 (Current) - Multi-Player Support
+- ✅ **Refactored for N Players** - Now supports 2-6 players (previously 2-player only)
+- ✅ Enhanced player selection system with indexed menus
+- ✅ Improved game state display for multiple players
+- ✅ Updated ruleset documentation for multi-player gameplay
+- ✅ Maintained all Version 2.0 code quality improvements
+
+### Version 2.0 - Code Quality Improvements
 - ✅ Added comprehensive input validation
 - ✅ Added error handling and bounds checking
 - ✅ Removed code duplication (refactored draw cards, win conditions)
@@ -141,7 +150,7 @@ Free to use and modify for personal and educational purposes.
 
 ## Author
 
-Somio Muktadir
+Muktadir Somio
 
 ---
 
