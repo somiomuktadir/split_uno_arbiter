@@ -89,7 +89,7 @@ Run the arbiter application:
 
 ## Game Rules
 
-For detailed game rules, see [ruleset.pdf](ruleset.pdf).
+For detailed game rules, see [ruleset.md](ruleset.md).
 
 ### Quick Reference
 
