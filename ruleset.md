@@ -331,12 +331,12 @@ The arbiter does NOT validate specific cards played (honor system). It only trac
 
 ## Web Application
 
-A playable web version of Split Uno is available in the `app/` directory.
-- **Play vs AI**: Challenge a smart computer opponent.
-- **Modern UI**: Enjoy a premium dark-themed interface.
-- **[Play Now](app/index.html)** (Requires local server)
+A playable web version of Split Uno is available as `game.html` in the root directory.
+- **Play vs AI**: Challenge a smart computer opponent
+- **Modern UI**: Enjoy a premium dark-themed interface with beautiful gradients
+- **Single-file app**: No installation or server required - just open in your browser!
 
-See [app/README.md](app/README.md) for more details.
+Simply open `game.html` in any modern web browser to play.
 
 ---
 
