@@ -269,7 +269,6 @@ If either deck runs out of cards:
 ---
 
 ## Winning the Game
-
 ### Primary Win Condition
 The first player to reduce their **number cards to 0** has a chance to win, but opponents can challenge:
 
@@ -327,6 +326,17 @@ The arbiter does NOT validate specific cards played (honor system). It only trac
 ### Hardcore Mode
 - No challenges allowed at 0 cards (instant win)
 - +2 and +4 cannot be countered
+
+---
+
+## Web Application
+
+A playable web version of Split Uno is available in the `app/` directory.
+- **Play vs AI**: Challenge a smart computer opponent.
+- **Modern UI**: Enjoy a premium dark-themed interface.
+- **[Play Now](app/index.html)** (Requires local server)
+
+See [app/README.md](app/README.md) for more details.
 
 ---
 

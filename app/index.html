@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Split Uno</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main Menu -->
+        <section id="main-menu" class="screen active">
+            <div class="logo-container">
+                <h1 class="game-title">SPLIT <span class="highlight">UNO</span></h1>
+                <p class="subtitle">Strategy. Separation. Supremacy.</p>
+            </div>
+            <div class="menu-options">
+                <button id="start-game-btn" class="btn primary">Start Game</button>
+                <button id="rules-btn" class="btn secondary">Rules</button>
+            </div>
+        </section>
+
+        <!-- Game Board -->
+        <section id="game-board" class="screen hidden">
+            <div class="top-bar">
+                <div class="player-info opponent">
+                    <div class="avatar">AI</div>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <span class="label">Number Cards</span>
+                            <span class="value" id="ai-num-count">20</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Action Cards</span>
+                            <span class="value" id="ai-action-count">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="game-status">
+                    <span id="round-info">Round 1</span>
+                    <div id="message-area">Game Start!</div>
+                </div>
+            </div>
+
+            <div class="play-area">
+                <div class="deck-container">
+                    <div class="deck number-deck" id="number-deck">
+                        <div class="card-back"></div>
+                        <span class="deck-label">Number Deck</span>
+                    </div>
+                    <div class="deck action-deck" id="action-deck">
+                        <div class="card-back"></div>
+                        <span class="deck-label">Action Deck</span>
+                    </div>
+                </div>
+                
+                <div class="active-play-zone">
+                    <div class="card-slot opponent-slot" id="opponent-play-slot"></div>
+                    <div class="vs-badge">VS</div>
+                    <div class="card-slot player-slot" id="player-play-slot"></div>
+                </div>
+            </div>
+
+            <div class="bottom-bar">
+                <div class="player-controls">
+                    <div class="hand-container" id="player-hand">
+                        <!-- Cards will be injected here -->
+                    </div>
+                    <div class="action-hand-container" id="player-action-hand">
+                        <!-- Action cards will be injected here -->
+                    </div>
+                </div>
+                <div class="player-info self">
+                    <div class="stats">
+                        <div class="stat-item">
+                            <span class="label">Your Numbers</span>
+                            <span class="value" id="player-num-count">20</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Your Actions</span>
+                            <span class="value" id="player-action-count">0</span>
+                        </div>
+                    </div>
+                    <button id="play-action-btn" class="btn small" disabled>Play Action</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Modals -->
+        <div id="modal-overlay" class="hidden">
+            <div class="modal-content" id="modal-content">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
