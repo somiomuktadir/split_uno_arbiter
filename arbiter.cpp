@@ -594,7 +594,8 @@ public:
         cout << "║          SPLIT UNO ARBITER - GAME TRACKER v3.0             ║\n";
         cout << "╚════════════════════════════════════════════════════════════╝\n";
         
-        int numPlayers = getValidatedInt("Enter number of players (2-6): ", 2, 6);
+        cout << ">>> STRICTLY 2 PLAYERS MODE <<<\n";
+        int numPlayers = 2;
         for (int i = 1; i <= numPlayers; ++i) {
             string name;
             cout << "Enter name for Player " << i << ": ";

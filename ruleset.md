@@ -20,7 +20,7 @@
 
 **Split UNO** is a competitive card game variant that reimagines the classic UNO experience by separating number cards and action cards into distinct decks. This creates a unique strategic layer where players must manage two different types of resources while competing to be the first to shed all their number cards.
 
-**Players:** 2-6  
+**Players:** 2 (Strictly 1v1)  
 
 ---
 
@@ -318,10 +318,8 @@ The arbiter does NOT validate specific cards played (honor system). It only trac
 - Reduce starting cards to 15 per player
 - Remove TRUTH and DARE cards for faster gameplay
 
-### Team Split UNO (4-6 players)
-- Players form teams of 2-3
-- Team shares a combined card count
-- First team to reach 0 wins
+### Team Split UNO (Disabled)
+- Team mode is disabled in this version (Strictly 1v1)
 
 ### Hardcore Mode
 - No challenges allowed at 0 cards (instant win)
